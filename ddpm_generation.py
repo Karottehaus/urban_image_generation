@@ -11,19 +11,20 @@ from settings import IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS
 from settings import BATCH_SIZE, EPOCHS, NUM_TIMESTEPS, BETA_START, BETA_END, LEARNING_RATE, NUM_SAMPLES
 
 
-def load_images(folder_path: str):
-    """Load and preprocess images from folder"""
-    image_paths = glob(os.path.join(folder_path, '*.png'))
-    images = []
+def load_paired_images(left_folder: str, right_folder: str):
+    left_paths = sorted(glob(os.path.join(left_folder, '*.png')))
+    right_paths = sorted(glob(os.path.join(right_folder, '*.png')))
 
-    print(f"Loading {len(image_paths)} images from {folder_path}...")
+    merged_images = []
 
-    for img_path in tqdm(image_paths):
-        img = Image.open(img_path).convert('RGB')
-        img_array = np.array(img) / 127.5 - 1.0
-        images.append(img_array)
+    for left_path, right_path in zip(left_paths, right_paths):
+        left_img = np.array(Image.open(left_path).convert('RGB')) / 127.5 - 1.0
+        right_img = np.array(Image.open(right_path).convert('RGB')) / 127.5 - 1.0
+        # Concatenate along channel dimension → shape (H, W, 6)
+        merged = np.concatenate([left_img, right_img], axis=-1)
+        merged_images.append(merged)
 
-    return np.array(images, dtype=np.float32)
+    return np.array(merged_images, dtype=np.float32)
 
 
 def build_noise_predictor(img_height, img_width, img_channels):

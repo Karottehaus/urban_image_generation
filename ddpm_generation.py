@@ -269,7 +269,7 @@ def save_generated_images(generated_images: np.ndarray, output_dir: str = "gener
 
 
 if __name__ == "__main__":
-    images = load_images(folder_path="left")
+    images = load_paired_images(left_folder="left", right_folder="right")
 
     diffusion_model = train_diffusion(
         images,

@@ -7,30 +7,31 @@ from PIL import Image
 import os
 from glob import glob
 from tqdm import tqdm
-from settings import IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS
+from settings import IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS, MERGED_IMG_CHANNELS
 from settings import BATCH_SIZE, EPOCHS, NUM_TIMESTEPS, BETA_START, BETA_END, LEARNING_RATE, NUM_SAMPLES
 
 
-def load_images(folder_path: str):
-    """Load and preprocess images from folder"""
-    image_paths = glob(os.path.join(folder_path, '*.png'))
-    images = []
+def load_paired_images(left_folder: str, right_folder: str):
+    left_paths = sorted(glob(os.path.join(left_folder, '*.png')))
+    right_paths = sorted(glob(os.path.join(right_folder, '*.png')))
 
-    print(f"Loading {len(image_paths)} images from {folder_path}...")
+    merged_images = []
 
-    for img_path in tqdm(image_paths):
-        img = Image.open(img_path).convert('RGB')
-        img_array = np.array(img) / 127.5 - 1.0
-        images.append(img_array)
+    for left_path, right_path in zip(left_paths, right_paths):
+        left_img = np.array(Image.open(left_path).convert('RGB')) / 127.5 - 1.0
+        right_img = np.array(Image.open(right_path).convert('RGB')) / 127.5 - 1.0
+        # Concatenate along channel dimension → shape (H, W, 6)
+        merged = np.concatenate([left_img, right_img], axis=-1)
+        merged_images.append(merged)
 
-    return np.array(images, dtype=np.float32)
+    return np.array(merged_images, dtype=np.float32)
 
 
-def build_noise_predictor(img_height, img_width, img_channels):
+def build_noise_predictor(img_height, img_width, merged_img_channels):
     """Build U-Net style noise prediction network for images"""
 
     # Input layers
-    img_input = layers.Input(shape=(img_height, img_width, img_channels), name="noisy_image")
+    img_input = layers.Input(shape=(img_height, img_width, merged_img_channels), name="noisy_image")
     timestep_input = layers.Input(shape=(1,), name="timestep")
 
     # Timestep embedding
@@ -113,7 +114,7 @@ def build_noise_predictor(img_height, img_width, img_channels):
     up1 = layers.Conv2D(64, 3, padding="same", activation="relu")(up1)
 
     # Output
-    predicted_noise = layers.Conv2D(img_channels, 1, padding="same")(up1)
+    predicted_noise = layers.Conv2D(merged_img_channels, 1, padding="same")(up1)
     return Model([img_input, timestep_input], predicted_noise, name="noise_predictor")
 
 
@@ -204,17 +205,21 @@ class ImageDiffusionModel(Model):
         return {"loss": loss}
 
     @tf.function
-    def generate(self, num_samples: int, img_height: int, img_width: int, img_channels: int) -> tf.Tensor:
-        """Generate new images using reverse diffusion process"""
-        x = tf.random.normal((num_samples, img_height, img_width, img_channels))
+    def generate(self, right_images: tf.Tensor) -> tf.Tensor:
+
+        batch_size = tf.shape(right_images)[0]
+        h, w = right_images.shape[1:3]
+
+        zero_noise = tf.random.normal((batch_size, h, w, 3))
+        x = tf.concat([zero_noise, right_images], axis=-1)  # shape (B, H, W, 6)
+
         for t in reversed(range(self.num_timesteps)):
             x = self.p_sample(x, t)
-
         return x
 
 
 def train_diffusion(images: np.ndarray, epochs: int, batch_size: int) -> ImageDiffusionModel:
-    noise_predictor = build_noise_predictor(IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS)
+    noise_predictor = build_noise_predictor(IMG_HEIGHT, IMG_WIDTH, MERGED_IMG_CHANNELS)
 
     diffusion_model = ImageDiffusionModel(
         noise_predictor,
@@ -261,14 +266,14 @@ def save_generated_images(generated_images: np.ndarray, output_dir: str = "gener
     generated_images = ((generated_images + 1.0) * 127.5).astype(np.uint8)
 
     for i, img in enumerate(generated_images):
-        img_pil = Image.fromarray(img)
+        img_pil = Image.fromarray(img[..., :3])
         img_pil.save(os.path.join(output_dir, f"generated_{i:04d}.png"))
 
     print(f"Saved {len(generated_images)} images to {output_dir}")
 
 
 if __name__ == "__main__":
-    images = load_images(folder_path="left")
+    images = load_paired_images(left_folder="left", right_folder="right")
 
     diffusion_model = train_diffusion(
         images,
@@ -276,6 +281,9 @@ if __name__ == "__main__":
         batch_size=BATCH_SIZE
     )
 
-    generated = diffusion_model.generate(NUM_SAMPLES, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS).numpy()
+    right_images = np.array([img[..., 3:] for img in images], dtype=np.float32)
+    right_tensor = tf.convert_to_tensor(right_images)
+
+    generated = diffusion_model.generate(right_tensor).numpy()
 
     save_generated_images(generated, output_dir="generated_images")

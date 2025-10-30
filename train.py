@@ -216,7 +216,7 @@ def train_diffusion(images: np.ndarray, epochs: int, batch_size: int) -> ImageDi
     )
 
     os.makedirs("trained_models", exist_ok=True)
-    diffusion_model.noise_predictor.save("trained_models/noise_predictor.h5")
+    diffusion_model.noise_predictor.save("trained_models/noise_predictor.keras")
     print("Trained model saved.")
 
 

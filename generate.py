@@ -6,9 +6,8 @@ from glob import glob
 from settings import IMG_HEIGHT, IMG_WIDTH, NUM_TIMESTEPS, BETA_START, BETA_END
 
 
-class ImageDiffusionModel(Model):
-    def __init__(self, noise_predictor: Model, num_timesteps: int,
-                 beta_start: float, beta_end: float):
+class ImageDiffusionModel:
+    def __init__(self, noise_predictor, num_timesteps, beta_start, beta_end):
         self.noise_predictor = noise_predictor
         self.num_timesteps = num_timesteps
         self.beta_start = beta_start
@@ -83,7 +82,7 @@ def save_generated_images(generated_images: np.ndarray, output_dir: str = "gener
 
 if __name__ == "__main__":
     print("Loading trained noise predictor...")
-    noise_predictor = tf.keras.models.load_model("trained_models/noise_predictor.h5", compile=False)
+    noise_predictor = tf.keras.models.load_model("trained_models/noise_predictor.keras", compile=False)
     diffusion_model = ImageDiffusionModel(noise_predictor, NUM_TIMESTEPS, BETA_START, BETA_END)
 
     right_paths = sorted(glob("right/*.png"))

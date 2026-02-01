@@ -26,12 +26,12 @@ class ImageDiffusionModel:
         self.posterior_variance = (self.betas * (1.0 - self.alphas_cumprod_prev) /
                                    (1.0 - self.alphas_cumprod))
 
-    def p_sample(self, x_t: tf.Tensor, t: int) -> tf.Tensor:
+    def p_sample(self, x_t: tf.Tensor, control_img: tf.Tensor, t: int) -> tf.Tensor:
         """Reverse diffusion process: denoise images"""
         batch_size = tf.shape(x_t)[0]
         t_batch = tf.ones((batch_size,), dtype=tf.int32) * t
 
-        predicted_noise = self.noise_predictor([x_t, tf.cast(t_batch, tf.float32)])
+        predicted_noise = self.noise_predictor([x_t, control_img, tf.cast(t_batch, tf.float32)])
 
         alpha_cumprod_t = tf.gather(self.alphas_cumprod, t)
         beta_t = tf.gather(self.betas, t)
@@ -53,16 +53,15 @@ class ImageDiffusionModel:
             return model_mean
 
     @tf.function
-    def generate(self, right_images: tf.Tensor) -> tf.Tensor:
+    def generate(self, control_images: tf.Tensor) -> tf.Tensor:
 
-        batch_size = tf.shape(right_images)[0]
-        h, w = right_images.shape[1:3]
+        batch_size = tf.shape(control_images)[0]
+        h, w = control_images.shape[1:3]
 
-        zero_noise = tf.random.normal((batch_size, h, w, 3))
-        x = tf.concat([zero_noise, right_images], axis=-1)  # shape (B, H, W, 6)
+        x = tf.random.normal((batch_size, h, w, 3))
 
         for t in reversed(range(self.num_timesteps)):
-            x = self.p_sample(x, t)
+            x = self.p_sample(x, control_images, t)
         return x
 
 
@@ -74,7 +73,7 @@ def save_generated_images(generated_images: np.ndarray, output_dir: str = "gener
     generated_images = ((generated_images + 1.0) * 127.5).astype(np.uint8)
 
     for i, img in enumerate(generated_images):
-        img_pil = Image.fromarray(img[..., :3])
+        img_pil = Image.fromarray(img)
         img_pil.save(os.path.join(output_dir, f"generated_{i:04d}.png"))
 
     print(f"Saved {len(generated_images)} images to {output_dir}")

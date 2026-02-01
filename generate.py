@@ -73,7 +73,7 @@ def save_generated_images(generated_images: np.ndarray, output_dir: str = "gener
     generated_images = ((generated_images + 1.0) * 127.5).astype(np.uint8)
 
     for i, img in enumerate(generated_images):
-        img_pil = Image.fromarray(img[..., :3])
+        img_pil = Image.fromarray(img)
         img_pil.save(os.path.join(output_dir, f"generated_{i:04d}.png"))
 
     print(f"Saved {len(generated_images)} images to {output_dir}")

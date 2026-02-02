@@ -88,7 +88,8 @@ if __name__ == "__main__":
     right_paths = sorted(glob("right/*.png"))
     # right_images = np.array([np.array(Image.open(p).convert('RGB')) / 127.5 - 1.0 for p in right_paths], dtype=np.float32)
 
-    img = Image.open(right_paths[0]).convert("RGB")
+    img_path = "right/1218.png"
+    img = Image.open(img_path).convert("RGB")
     img = np.array(img) / 127.5 - 1.0
     img = img.astype(np.float32)
     right_tensor = tf.expand_dims(img, axis=0)

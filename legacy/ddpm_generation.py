@@ -326,4 +326,4 @@ if __name__ == "__main__":
 
     generated = diffusion_model.generate(right_tensor).numpy()
 
-    save_generated_images(generated, output_dir="generated_images")
+    save_generated_images(generated, output_dir="../generated_images")

@@ -3,7 +3,7 @@ import tensorflow as tf
 from PIL import Image
 import os
 from glob import glob
-from settings import IMG_HEIGHT, IMG_WIDTH, NUM_TIMESTEPS, BETA_START, BETA_END
+from settings import NUM_TIMESTEPS, BETA_START, BETA_END
 
 
 class ImageDiffusionModel:

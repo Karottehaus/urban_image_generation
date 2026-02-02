@@ -7,7 +7,7 @@ from PIL import Image
 import os
 from glob import glob
 from settings import IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS
-from settings import BATCH_SIZE, EPOCHS, NUM_TIMESTEPS, BETA_START, BETA_END, LEARNING_RATE, NUM_SAMPLES
+from settings import BATCH_SIZE, EPOCHS, NUM_TIMESTEPS, BETA_START, BETA_END, LEARNING_RATE
 
 
 def load_paired_images(left_folder: str, right_folder: str):

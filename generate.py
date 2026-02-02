@@ -70,6 +70,7 @@ def save_generated_images(generated_images: np.ndarray, output_dir: str = "gener
     os.makedirs(output_dir, exist_ok=True)
 
     # Denormalize from [-1, 1] to [0, 255]
+    generated_images = np.clip(generated_images, -1.0, 1.0)
     generated_images = ((generated_images + 1.0) * 127.5).astype(np.uint8)
 
     for i, img in enumerate(generated_images):
@@ -85,10 +86,14 @@ if __name__ == "__main__":
     diffusion_model = ImageDiffusionModel(noise_predictor, NUM_TIMESTEPS, BETA_START, BETA_END)
 
     right_paths = sorted(glob("right/*.png"))
-    right_images = np.array([np.array(Image.open(p).convert('RGB')) / 127.5 - 1.0 for p in right_paths],
-                            dtype=np.float32)
+    # right_images = np.array([np.array(Image.open(p).convert('RGB')) / 127.5 - 1.0 for p in right_paths], dtype=np.float32)
 
-    right_tensor = tf.convert_to_tensor(right_images)
+    img = Image.open(right_paths[0]).convert("RGB")
+    img = np.array(img) / 127.5 - 1.0
+    img = img.astype(np.float32)
+    right_tensor = tf.expand_dims(img, axis=0)
+
+    # right_tensor = tf.convert_to_tensor(right_images)
 
     print("Generating new images...")
     generated = diffusion_model.generate(right_tensor).numpy()

@@ -238,7 +238,7 @@ def train_diffusion(left_images: np.ndarray, right_images: np.ndarray, epochs: i
     _, _, left_latents = encoder.predict(left_images, batch_size=batch_size)
     _, _, right_latents = encoder.predict(right_images, batch_size=batch_size)
 
-    noise_predictor = build_noise_predictor(IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS)
+    noise_predictor = build_noise_predictor(IMG_HEIGHT, IMG_WIDTH)
 
     diffusion_model = ImageDiffusionModel(
         noise_predictor,

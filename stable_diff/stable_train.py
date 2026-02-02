@@ -7,7 +7,8 @@ from PIL import Image
 import os
 from glob import glob
 from settings import IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS
-from settings import BATCH_SIZE, EPOCHS, NUM_TIMESTEPS, BETA_START, BETA_END, LEARNING_RATE, NUM_SAMPLES
+from settings import BATCH_SIZE, EPOCHS, NUM_TIMESTEPS, BETA_START, BETA_END, LEARNING_RATE
+from stable_diff.vae import build_vae, VAEModel
 
 
 def load_paired_images(left_folder: str, right_folder: str):
@@ -27,12 +28,15 @@ def load_paired_images(left_folder: str, right_folder: str):
     return np.array(left_images, dtype=np.float32), np.array(right_images, dtype=np.float32)
 
 
-def build_noise_predictor(img_height, img_width, img_channels):
-    """Build U-Net style noise prediction network with ControlNet-like architecture"""
+def build_noise_predictor(img_height, img_width, latent_dim=4):
+    """Build U-Net style noise prediction network with ControlNet-like architecture for latent space"""
+
+    # Latent dimensions
+    latent_h, latent_w = img_height // 8, img_width // 8
 
     # Input layers
-    img_input = layers.Input(shape=(img_height, img_width, img_channels), name="noisy_image")
-    control_input = layers.Input(shape=(img_height, img_width, img_channels), name="control_image")
+    img_input = layers.Input(shape=(latent_h, latent_w, latent_dim), name="noisy_latent")
+    control_input = layers.Input(shape=(latent_h, latent_w, latent_dim), name="control_latent")
     timestep_input = layers.Input(shape=(1,), name="timestep")
 
     # Timestep embedding
@@ -51,7 +55,7 @@ def build_noise_predictor(img_height, img_width, img_channels):
     c1 = c1 * t_c1
     out_c1 = zero_conv(c1)
 
-    cp1 = layers.MaxPooling2D(2)(c1)
+    cp1 = layers.Conv2D(64, 3, strides=2, padding="same", activation="relu")(c1)
 
     # Block 2
     c2 = layers.Conv2D(128, 3, padding="same", activation="relu")(cp1)
@@ -61,7 +65,7 @@ def build_noise_predictor(img_height, img_width, img_channels):
     c2 = c2 * t_c2
     out_c2 = zero_conv(c2)
 
-    cp2 = layers.MaxPooling2D(2)(c2)
+    cp2 = layers.Conv2D(128, 3, strides=2, padding="same", activation="relu")(c2)
 
     # Block 3
     c3 = layers.Conv2D(256, 3, padding="same", activation="relu")(cp2)
@@ -71,7 +75,7 @@ def build_noise_predictor(img_height, img_width, img_channels):
     c3 = c3 * t_c3
     out_c3 = zero_conv(c3)
 
-    cp3 = layers.MaxPooling2D(2)(c3)
+    cp3 = layers.Conv2D(256, 3, strides=2, padding="same", activation="relu")(c3)
 
     # Block 4
     c4 = layers.Conv2D(512, 3, padding="same", activation="relu")(cp3)
@@ -81,7 +85,7 @@ def build_noise_predictor(img_height, img_width, img_channels):
     c4 = c4 * t_c4
     out_c4 = zero_conv(c4)
 
-    cp4 = layers.MaxPooling2D(2)(c4)
+    cp4 = layers.Conv2D(512, 3, strides=2, padding="same", activation="relu")(c4)
 
     # Control Bottleneck
     cb = layers.Conv2D(1024, 3, padding="same", activation="relu")(cp4)
@@ -98,28 +102,28 @@ def build_noise_predictor(img_height, img_width, img_channels):
     t_embed_1 = layers.Dense(64)(t_embed)
     t_embed_1 = layers.Reshape((1, 1, 64))(t_embed_1)
     x1 = x1 * t_embed_1
-    pool1 = layers.MaxPooling2D(2)(x1)
+    pool1 = layers.Conv2D(64, 3, strides=2, padding="same", activation="relu")(x1)
 
     x2 = layers.Conv2D(128, 3, padding="same", activation="relu")(pool1)
     x2 = layers.Conv2D(128, 3, padding="same", activation="relu")(x2)
     t_embed_2 = layers.Dense(128)(t_embed)
     t_embed_2 = layers.Reshape((1, 1, 128))(t_embed_2)
     x2 = x2 * t_embed_2
-    pool2 = layers.MaxPooling2D(2)(x2)
+    pool2 = layers.Conv2D(128, 3, strides=2, padding="same", activation="relu")(x2)
 
     x3 = layers.Conv2D(256, 3, padding="same", activation="relu")(pool2)
     x3 = layers.Conv2D(256, 3, padding="same", activation="relu")(x3)
     t_embed_3 = layers.Dense(256)(t_embed)
     t_embed_3 = layers.Reshape((1, 1, 256))(t_embed_3)
     x3 = x3 * t_embed_3
-    pool3 = layers.MaxPooling2D(2)(x3)
+    pool3 = layers.Conv2D(256, 3, strides=2, padding="same", activation="relu")(x3)
 
     x4 = layers.Conv2D(512, 3, padding="same", activation="relu")(pool3)
     x4 = layers.Conv2D(512, 3, padding="same", activation="relu")(x4)
     t_embed_4 = layers.Dense(512)(t_embed)
     t_embed_4 = layers.Reshape((1, 1, 512))(t_embed_4)
     x4 = x4 * t_embed_4
-    pool4 = layers.MaxPooling2D(2)(x4)
+    pool4 = layers.Conv2D(512, 3, strides=2, padding="same", activation="relu")(x4)
 
     # Bottleneck
     bottleneck = layers.Conv2D(1024, 3, padding="same", activation="relu")(pool4)
@@ -132,28 +136,28 @@ def build_noise_predictor(img_height, img_width, img_channels):
     bottleneck = layers.Add()([bottleneck, out_cb])
 
     # Decoder
-    up4 = layers.UpSampling2D(2)(bottleneck)
+    up4 = layers.Conv2DTranspose(512, 3, strides=2, padding="same", activation="relu")(bottleneck)
     up4 = layers.Concatenate()([up4, layers.Add()([x4, out_c4])])
     up4 = layers.Conv2D(512, 3, padding="same", activation="relu")(up4)
     up4 = layers.Conv2D(512, 3, padding="same", activation="relu")(up4)
 
-    up3 = layers.UpSampling2D(2)(up4)
+    up3 = layers.Conv2DTranspose(256, 3, strides=2, padding="same", activation="relu")(up4)
     up3 = layers.Concatenate()([up3, layers.Add()([x3, out_c3])])
     up3 = layers.Conv2D(256, 3, padding="same", activation="relu")(up3)
     up3 = layers.Conv2D(256, 3, padding="same", activation="relu")(up3)
 
-    up2 = layers.UpSampling2D(2)(up3)
+    up2 = layers.Conv2DTranspose(128, 3, strides=2, padding="same", activation="relu")(up3)
     up2 = layers.Concatenate()([up2, layers.Add()([x2, out_c2])])
     up2 = layers.Conv2D(128, 3, padding="same", activation="relu")(up2)
     up2 = layers.Conv2D(128, 3, padding="same", activation="relu")(up2)
 
-    up1 = layers.UpSampling2D(2)(up2)
+    up1 = layers.Conv2DTranspose(64, 3, strides=2, padding="same", activation="relu")(up2)
     up1 = layers.Concatenate()([up1, layers.Add()([x1, out_c1])])
     up1 = layers.Conv2D(64, 3, padding="same", activation="relu")(up1)
     up1 = layers.Conv2D(64, 3, padding="same", activation="relu")(up1)
 
     # Output
-    predicted_noise = layers.Conv2D(img_channels, 1, padding="same")(up1)
+    predicted_noise = layers.Conv2D(latent_dim, 1, padding="same")(up1)
     return Model([img_input, control_input, timestep_input], predicted_noise, name="noise_predictor")
 
 
@@ -198,18 +202,18 @@ class ImageDiffusionModel(Model):
         return x_t
 
     def train_step(self, data) -> dict:
-        """Training step for diffusion model"""
-        images, control_images = data
-        batch_size = tf.shape(images)[0]
+        """Training step for diffusion model in latent space"""
+        latents, control_latents = data
+        batch_size = tf.shape(latents)[0]
 
         with tf.GradientTape() as tape:
             t = tf.random.uniform((batch_size,), minval=0, maxval=self.num_timesteps, dtype=tf.int32)
 
-            epsilon = tf.random.normal(shape=tf.shape(images))
+            epsilon = tf.random.normal(shape=tf.shape(latents))
 
-            x_t = self.q_sample(images, t, epsilon)
+            x_t = self.q_sample(latents, t, epsilon)
 
-            predicted_noise = self.noise_predictor([x_t, control_images, tf.cast(t, tf.float32)])
+            predicted_noise = self.noise_predictor([x_t, control_latents, tf.cast(t, tf.float32)])
 
             loss = self.mse_loss_fn(epsilon, predicted_noise)
 
@@ -221,6 +225,19 @@ class ImageDiffusionModel(Model):
 
 def train_diffusion(left_images: np.ndarray, right_images: np.ndarray, epochs: int,
                     batch_size: int) -> ImageDiffusionModel:
+    # Build VAE and train it first
+    vae_base, encoder, decoder = build_vae(IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS)
+    vae_model = VAEModel(vae_base, encoder, decoder)
+    vae_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4))
+
+    print("Training VAE...")
+    vae_model.fit(left_images, epochs=200, batch_size=batch_size)
+
+    # Encode images to latents
+    print("Encoding images to latents...")
+    _, _, left_latents = encoder.predict(left_images, batch_size=batch_size)
+    _, _, right_latents = encoder.predict(right_images, batch_size=batch_size)
+
     noise_predictor = build_noise_predictor(IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS)
 
     diffusion_model = ImageDiffusionModel(
@@ -248,22 +265,25 @@ def train_diffusion(left_images: np.ndarray, right_images: np.ndarray, epochs: i
         min_lr=1e-8
     )
 
-    dataset = tf.data.Dataset.from_tensor_slices((left_images, right_images))
+    dataset = tf.data.Dataset.from_tensor_slices((left_latents, right_latents))
     dataset = dataset.shuffle(buffer_size=1000).batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
+    print("Training Latent Diffusion Model...")
     diffusion_model.fit(
         dataset,
         epochs=epochs,
         callbacks=[early_stopping, lr_scheduler]
     )
 
-    os.makedirs("trained_models", exist_ok=True)
-    diffusion_model.noise_predictor.save("trained_models/noise_predictor.keras")
-    print("Trained model saved.")
+    os.makedirs("../trained_models", exist_ok=True)
+    diffusion_model.noise_predictor.save("../trained_models/stable_noise_predictor.keras")
+    encoder.save("../trained_models/encoder.keras")
+    decoder.save("../trained_models/decoder.keras")
+    print("Trained models saved.")
 
 
 if __name__ == "__main__":
-    left_images, right_images = load_paired_images(left_folder="left", right_folder="right")
+    left_images, right_images = load_paired_images(left_folder="../left", right_folder="../right")
 
     diffusion_model = train_diffusion(
         left_images,

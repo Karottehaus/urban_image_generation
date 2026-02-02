@@ -7,7 +7,7 @@ from PIL import Image
 import os
 from glob import glob
 from settings import IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS
-from settings import BATCH_SIZE, EPOCHS, NUM_TIMESTEPS, BETA_START, BETA_END, LEARNING_RATE, NUM_SAMPLES
+from settings import BATCH_SIZE, EPOCHS, NUM_TIMESTEPS, BETA_START, BETA_END, LEARNING_RATE
 
 
 def load_paired_images(left_folder: str, right_folder: str):
@@ -197,32 +197,6 @@ class ImageDiffusionModel(Model):
         x_t = sqrt_alpha_cumprod_t * x_start + sqrt_one_minus_alpha_cumprod_t * epsilon
         return x_t
 
-    def p_sample(self, x_t: tf.Tensor, control_img: tf.Tensor, t: int) -> tf.Tensor:
-        """Reverse diffusion process: denoise images"""
-        batch_size = tf.shape(x_t)[0]
-        t_batch = tf.ones((batch_size,), dtype=tf.int32) * t
-
-        predicted_noise = self.noise_predictor([x_t, control_img, tf.cast(t_batch, tf.float32)])
-
-        alpha_cumprod_t = tf.gather(self.alphas_cumprod, t)
-        beta_t = tf.gather(self.betas, t)
-        sqrt_recip_alpha_t = tf.gather(self.sqrt_recip_alphas, t)
-        posterior_variance_t = tf.gather(self.posterior_variance, t)
-
-        # Reshape for broadcasting
-        alpha_cumprod_t = tf.reshape(alpha_cumprod_t, [1, 1, 1, 1])
-        beta_t = tf.reshape(beta_t, [1, 1, 1, 1])
-        sqrt_recip_alpha_t = tf.reshape(sqrt_recip_alpha_t, [1, 1, 1, 1])
-        posterior_variance_t = tf.reshape(posterior_variance_t, [1, 1, 1, 1])
-
-        model_mean = sqrt_recip_alpha_t * (x_t - beta_t / tf.sqrt(1.0 - alpha_cumprod_t) * predicted_noise)
-
-        if t > 0:
-            epsilon = tf.random.normal(shape=tf.shape(x_t))
-            return model_mean + tf.sqrt(posterior_variance_t) * epsilon
-        else:
-            return model_mean
-
     def train_step(self, data) -> dict:
         """Training step for diffusion model"""
         images, control_images = data
@@ -243,18 +217,6 @@ class ImageDiffusionModel(Model):
         self.optimizer.apply_gradients(zip(grads, self.noise_predictor.trainable_weights))
 
         return {"loss": loss}
-
-    @tf.function
-    def generate(self, control_images: tf.Tensor) -> tf.Tensor:
-
-        batch_size = tf.shape(control_images)[0]
-        h, w = control_images.shape[1:3]
-
-        x = tf.random.normal((batch_size, h, w, 3))
-
-        for t in reversed(range(self.num_timesteps)):
-            x = self.p_sample(x, control_images, t)
-        return x
 
 
 def train_diffusion(left_images: np.ndarray, right_images: np.ndarray, epochs: int,
@@ -295,25 +257,13 @@ def train_diffusion(left_images: np.ndarray, right_images: np.ndarray, epochs: i
         callbacks=[early_stopping, lr_scheduler]
     )
 
-    return diffusion_model
-
-
-def save_generated_images(generated_images: np.ndarray, output_dir: str = "generated_images"):
-    """Save generated images to disk"""
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Denormalize from [-1, 1] to [0, 255]
-    generated_images = ((generated_images + 1.0) * 127.5).astype(np.uint8)
-
-    for i, img in enumerate(generated_images):
-        img_pil = Image.fromarray(img)
-        img_pil.save(os.path.join(output_dir, f"generated_{i:04d}.png"))
-
-    print(f"Saved {len(generated_images)} images to {output_dir}")
+    os.makedirs("../trained_models", exist_ok=True)
+    diffusion_model.noise_predictor.save("../trained_models/noise_predictor.keras")
+    print("Trained model saved.")
 
 
 if __name__ == "__main__":
-    left_images, right_images = load_paired_images(left_folder="left", right_folder="right")
+    left_images, right_images = load_paired_images(left_folder="../left", right_folder="../right")
 
     diffusion_model = train_diffusion(
         left_images,
@@ -321,9 +271,3 @@ if __name__ == "__main__":
         epochs=EPOCHS,
         batch_size=BATCH_SIZE
     )
-
-    right_tensor = tf.convert_to_tensor(right_images)
-
-    generated = diffusion_model.generate(right_tensor).numpy()
-
-    save_generated_images(generated, output_dir="generated_images")

@@ -257,7 +257,7 @@ def train_diffusion(left_images: np.ndarray, right_images: np.ndarray, epochs: i
         callbacks=[early_stopping, lr_scheduler]
     )
 
-    os.makedirs("trained_models", exist_ok=True)
+    os.makedirs("../trained_models", exist_ok=True)
     diffusion_model.noise_predictor.save("trained_models/noise_predictor.keras")
     print("Trained model saved.")
 

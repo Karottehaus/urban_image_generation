@@ -257,13 +257,13 @@ def train_diffusion(left_images: np.ndarray, right_images: np.ndarray, epochs: i
         callbacks=[early_stopping, lr_scheduler]
     )
 
-    os.makedirs("../trained_models", exist_ok=True)
-    diffusion_model.noise_predictor.save("../trained_models/noise_predictor.keras")
+    os.makedirs("trained_models", exist_ok=True)
+    diffusion_model.noise_predictor.save("trained_models/noise_predictor.keras")
     print("Trained model saved.")
 
 
 if __name__ == "__main__":
-    left_images, right_images = load_paired_images(left_folder="../left", right_folder="../right")
+    left_images, right_images = load_paired_images(left_folder="left", right_folder="right")
 
     diffusion_model = train_diffusion(
         left_images,

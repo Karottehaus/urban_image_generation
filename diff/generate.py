@@ -2,7 +2,6 @@ import numpy as np
 import tensorflow as tf
 from PIL import Image
 import os
-from glob import glob
 from settings import NUM_TIMESTEPS, BETA_START, BETA_END
 
 
@@ -65,7 +64,7 @@ class ImageDiffusionModel:
         return x
 
 
-def save_generated_images(generated_images: np.ndarray, output_dir: str = "../generated_images"):
+def save_generated_images(generated_images: np.ndarray, output_dir: str = "generated_images"):
     """Save generated images to disk"""
     os.makedirs(output_dir, exist_ok=True)
 
@@ -82,10 +81,10 @@ def save_generated_images(generated_images: np.ndarray, output_dir: str = "../ge
 
 if __name__ == "__main__":
     print("Loading trained noise predictor...")
-    noise_predictor = tf.keras.models.load_model("../trained_models/noise_predictor.keras", compile=False)
+    noise_predictor = tf.keras.models.load_model("trained_models/noise_predictor.keras", compile=False)
     diffusion_model = ImageDiffusionModel(noise_predictor, NUM_TIMESTEPS, BETA_START, BETA_END)
 
-    img_path = "../right/1218.png"
+    img_path = "right/1218.png"
     img = Image.open(img_path).convert("RGB")
     img = np.array(img) / 127.5 - 1.0
     img = img.astype(np.float32)

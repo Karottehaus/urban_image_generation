@@ -1,1 +1,1 @@
-# urban_image_generation
+# urban-image-generation
